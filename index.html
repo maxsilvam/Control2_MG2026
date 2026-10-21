@@ -53,9 +53,19 @@
 const CONFIG = {
   groupCount: 2,
   groupNames: ["MCD", "CLARO"],
-  forcedRules: [{ name: "Correa", targetGroup: 2 }],
+  groupSizes: [10, 9],
+  forcedRules: [
+    { name: "Correa", targetGroup: 2 },
+    { name: "Domel", targetGroup: 1 }
+  ],
+  // No more than `maxTogether` members of each set may land in the same group
+  separationRules: [
+    { members: ["Pavez", "García", "Bastías", "Correa"], maxTogether: 2 },
+    { members: ["Montecinos", "Barrientos", "Saavedra"], maxTogether: 2 },
+    { members: ["Albornoz", "B. Díaz"], maxTogether: 1 }
+  ],
   participants: [
-    "Bastías", "Cornejo", "F. Díaz", "Samantha", "Hermida", "Monroi", "Pailamilla",
+    "Bastías", "Cornejo", "F. Díaz", "Domel", "Hermida", "Monroi", "Pailamilla",
     "Pavez", "Varas", "Albornoz", "Barrientos", "Correa", "B. Díaz", "Fuentealba",
     "García", "Montecinos", "Morales", "Saavedra", "Salgado"
   ]
@@ -67,25 +77,31 @@ const shuffle = arr => { const a = [...arr]; for (let i = a.length - 1; i > 0; i
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function assign() {
-  const { groupCount, forcedRules, participants } = CONFIG;
-  // Balanced sizes; which groups get the extra member is random
-  const base = Math.floor(participants.length / groupCount);
-  const extra = participants.length % groupCount;
-  const bonus = new Set(shuffle([...Array(groupCount).keys()]).slice(0, extra));
-  const capacity = [...Array(groupCount).keys()].map(i => base + (bonus.has(i) ? 1 : 0));
-
-  const groups = Array.from({ length: groupCount }, () => []);
+  const { groupCount, groupSizes: capacity, forcedRules, separationRules, participants } = CONFIG;
   const forced = new Map(forcedRules.map(r => [r.name, r.targetGroup - 1]));
-  for (const [name, g] of forced) if (participants.includes(name)) groups[g].push(name);
+  const valid = groups => separationRules.every(({ members, maxTogether }) =>
+    groups.every(g => members.filter(m => g.includes(m)).length <= maxTogether));
 
-  const rest = shuffle(participants.filter(p => !forced.has(p)));
-  for (const name of rest) {
-    const open = groups.map((g, i) => i).filter(i => groups[i].length < capacity[i]);
-    groups[open[rand(open.length)]].push(name);
+  // Random fill, retried until every separation rule holds
+  let groups;
+  do {
+    groups = Array.from({ length: groupCount }, () => []);
+    for (const [name, g] of forced) if (participants.includes(name)) groups[g].push(name);
+
+    const rest = shuffle(participants.filter(p => !forced.has(p)));
+    for (const name of rest) {
+      const open = groups.map((g, i) => i).filter(i => groups[i].length < capacity[i]);
+      groups[open[rand(open.length)]].push(name);
+    }
+  } while (!valid(groups));
+
+  // Reveal order: alternate groups one by one (MCD, CLARO, MCD, ...),
+  // each group's members in random order so forced names don't stand out
+  const queues = groups.map(shuffle);
+  const order = [];
+  while (queues.some(q => q.length)) {
+    queues.forEach((q, i) => { if (q.length) order.push({ name: q.shift(), group: i }); });
   }
-
-  // Reveal order: random interleaving so forced names don't stand out
-  const order = shuffle(groups.flatMap((g, i) => g.map(name => ({ name, group: i }))));
   return order;
 }
 
