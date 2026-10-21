@@ -62,7 +62,8 @@ const CONFIG = {
   separationRules: [
     { members: ["Pavez", "García", "Bastías", "Correa"], maxTogether: 2 },
     { members: ["Montecinos", "Barrientos", "Saavedra"], maxTogether: 2 },
-    { members: ["Albornoz", "B. Díaz"], maxTogether: 1 }
+    { members: ["Albornoz", "B. Díaz"], maxTogether: 1 },
+    { members: ["Varas", "Morales", "Fuentealba"], maxTogether: 2 }
   ],
   participants: [
     "Bastías", "Cornejo", "F. Díaz", "Domel", "Hermida", "Monroi", "Pailamilla",
@@ -78,8 +79,16 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function assign() {
   const { groupCount, groupSizes: capacity, forcedRules, separationRules, participants } = CONFIG;
-  const forced = new Map(forcedRules.map(r => [r.name, r.targetGroup - 1]));
-  const valid = groups => separationRules.every(({ members, maxTogether }) =>
+  // Match names ignoring accents, case and spacing so a typo can't silently disable a rule
+  const key = n => n.normalize("NFD").replace(/\p{M}/gu, "").replace(/\s+/g, "").toLowerCase();
+  const canon = n => {
+    const match = participants.find(p => key(p) === key(n));
+    if (!match) throw new Error(`Nombre en reglas no encontrado en participantes: ${n}`);
+    return match;
+  };
+  const forced = new Map(forcedRules.map(r => [canon(r.name), r.targetGroup - 1]));
+  const rules = separationRules.map(r => ({ ...r, members: r.members.map(canon) }));
+  const valid = groups => rules.every(({ members, maxTogether }) =>
     groups.every(g => members.filter(m => g.includes(m)).length <= maxTogether));
 
   // Random fill, retried until every separation rule holds
