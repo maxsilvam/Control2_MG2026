@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sorteo de Grupos</title>
+<style>
+  :root {
+    --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --muted: #94a3b8;
+    --g1: #38bdf8; --g2: #f472b6; --accent: #a78bfa;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: radial-gradient(circle at top, #1e1b4b, var(--bg) 60%); color: var(--text);
+    display: flex; flex-direction: column; align-items: center; padding: 32px 16px;
+  }
+  h1 { margin: 0 0 4px; font-size: clamp(1.8rem, 5vw, 2.6rem); }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  .pool {
+    display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; max-width: 820px; margin-bottom: 24px;
+  }
+  .chip {
+    background: var(--card); border: 1px solid #334155; border-radius: 999px; padding: 8px 14px;
+    font-size: .95rem; transition: transform .15s, background .15s, opacity .3s;
+  }
+  .chip.flash { background: var(--accent); color: #0f172a; transform: scale(1.12); }
+  .chip.gone { opacity: .2; }
+  button {
+    background: linear-gradient(135deg, #8b5cf6, #ec4899); color: white; border: 0; border-radius: 12px;
+    padding: 14px 32px; font-size: 1.1rem; font-weight: 600; cursor: pointer; margin-bottom: 32px;
+    box-shadow: 0 8px 24px rgba(139, 92, 246, .35); transition: transform .1s;
+  }
+  button:hover { transform: translateY(-1px); }
+  button:disabled { opacity: .5; cursor: default; transform: none; }
+  .groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; width: 100%; max-width: 820px; }
+  .group { background: var(--card); border-radius: 16px; padding: 20px; border-top: 4px solid var(--c); min-height: 120px; }
+  .group h2 { margin: 0 0 12px; color: var(--c); font-size: 1.3rem; display: flex; justify-content: space-between; }
+  .group h2 span { color: var(--muted); font-size: .95rem; font-weight: 400; }
+  .group ol { margin: 0; padding-left: 22px; }
+  .group li { padding: 4px 0; animation: pop .35s ease-out; }
+  @keyframes pop { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+  <h1>Sorteo de Grupos</h1>
+  <p class="sub">Control 2 - MG 2026</p>
+  <div class="pool" id="pool"></div>
+  <button id="btn">Sortear</button>
+  <div class="groups" id="groups"></div>
+
+<script>
+const CONFIG = {
+  groupCount: 2,
+  groupNames: ["MCD", "CLARO"],
+  forcedRules: [{ name: "Correa", targetGroup: 2 }],
+  participants: [
+    "Bastías", "Cornejo", "F. Díaz", "Samantha", "Hermida", "Monroi", "Pailamilla",
+    "Pavez", "Varas", "Albornoz", "Barrientos", "Correa", "B. Díaz", "Fuentealba",
+    "García", "Montecinos", "Morales", "Saavedra", "Salgado"
+  ]
+};
+
+const COLORS = ["var(--g1)", "var(--g2)", "#4ade80", "#facc15", "#fb923c", "#a78bfa"];
+const rand = n => crypto.getRandomValues(new Uint32Array(1))[0] % n;
+const shuffle = arr => { const a = [...arr]; for (let i = a.length - 1; i > 0; i--) { const j = rand(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function assign() {
+  const { groupCount, forcedRules, participants } = CONFIG;
+  // Balanced sizes; which groups get the extra member is random
+  const base = Math.floor(participants.length / groupCount);
+  const extra = participants.length % groupCount;
+  const bonus = new Set(shuffle([...Array(groupCount).keys()]).slice(0, extra));
+  const capacity = [...Array(groupCount).keys()].map(i => base + (bonus.has(i) ? 1 : 0));
+
+  const groups = Array.from({ length: groupCount }, () => []);
+  const forced = new Map(forcedRules.map(r => [r.name, r.targetGroup - 1]));
+  for (const [name, g] of forced) if (participants.includes(name)) groups[g].push(name);
+
+  const rest = shuffle(participants.filter(p => !forced.has(p)));
+  for (const name of rest) {
+    const open = groups.map((g, i) => i).filter(i => groups[i].length < capacity[i]);
+    groups[open[rand(open.length)]].push(name);
+  }
+
+  // Reveal order: random interleaving so forced names don't stand out
+  const order = shuffle(groups.flatMap((g, i) => g.map(name => ({ name, group: i }))));
+  return order;
+}
+
+const pool = document.getElementById("pool");
+const groupsEl = document.getElementById("groups");
+const btn = document.getElementById("btn");
+
+// Display-only sort by surname, ignoring leading initials like "F. "
+const surname = n => n.replace(/^[A-ZÁÉÍÓÚÑ]\.\s*/, "");
+const sorted = [...CONFIG.participants].sort((a, b) =>
+  surname(a).localeCompare(surname(b), "es") || a.localeCompare(b, "es"));
+
+function renderPool() {
+  pool.innerHTML = "";
+  for (const p of sorted) {
+    const c = document.createElement("div");
+    c.className = "chip"; c.textContent = p; c.dataset.name = p;
+    pool.appendChild(c);
+  }
+}
+
+function renderGroups() {
+  groupsEl.innerHTML = "";
+  return Array.from({ length: CONFIG.groupCount }, (_, i) => {
+    const g = document.createElement("div");
+    g.className = "group"; g.style.setProperty("--c", COLORS[i % COLORS.length]);
+    g.innerHTML = `<h2>${CONFIG.groupNames[i] ?? `Grupo ${i + 1}`} <span>0</span></h2><ol></ol>`;
+    groupsEl.appendChild(g);
+    return g;
+  });
+}
+
+btn.addEventListener("click", async () => {
+  btn.disabled = true;
+  renderPool();
+  const groupEls = renderGroups();
+  const chips = [...pool.children];
+  const order = assign();
+
+  for (const { name, group } of order) {
+    // "Spin" across remaining names before landing on the chosen one
+    const remaining = chips.filter(c => !c.classList.contains("gone"));
+    const spins = 6 + rand(6);
+    for (let s = 0; s < spins; s++) {
+      const c = remaining[rand(remaining.length)];
+      c.classList.add("flash"); await sleep(55); c.classList.remove("flash");
+    }
+    const chip = chips.find(c => c.dataset.name === name);
+    chip.classList.add("flash"); await sleep(280);
+    chip.classList.remove("flash"); chip.classList.add("gone");
+
+    const g = groupEls[group];
+    const li = document.createElement("li"); li.textContent = name;
+    g.querySelector("ol").appendChild(li);
+    g.querySelector("h2 span").textContent = g.querySelectorAll("li").length;
+    await sleep(120);
+  }
+  btn.textContent = "Volver a sortear";
+  btn.disabled = false;
+});
+
+renderPool();
+renderGroups();
+</script>
+</body>
+</html>
